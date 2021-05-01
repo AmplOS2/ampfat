@@ -1,44 +1,13 @@
-/*
- * Copyright (c) 2012-2013, Nathan Dumont
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of 
- *    conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list of 
- *    conditions and the following disclaimer in the documentation and/or other materials 
- *    provided with the distribution.
- * 3. Neither the name of the author nor the names of any contributors may be used to endorse or
- *    promote products derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- * This file is part of the Gristle FAT16/32 compatible filesystem driver.
- */
-
-#ifndef GRISTLE_H
-#define GRISTLE_H 1
+#pragma once
 
 #include <stdint.h>
-#include <sys/stat.h>
-#include <time.h>
-#include "block.h"
-#include "dirent.h"
+#include "block.hh"
+#include "dirent.hh"
 
-#define GRISTLE_BAD_PATH 255
+#define FAT_BAD_PATH 255
 
-#define MAX_OPEN_FILES 4
-#define MAX_PATH_LEN 256
+#define FAT_MAX_OPEN_FILES 4
+#define FAT_MAX_PATH_LEN 256
 
 #define FAT_ERROR_CLUSTER 1
 #define FAT_END_OF_FILE 2
@@ -183,21 +152,7 @@ int str_to_fatname(char *url, char *dosname);
 
 int fat_mount(blockno_t start, blockno_t volume_size, uint8_t part_type_hint);
 
-/**
- * \brief basic open a file function
- * 
- * Conforms to the IEEE standard open function with the addition of a return error number parameter.
- * Will open a file according to the flags and mode using given name.  This function doesn't set
- * the global errno parameter, it writes any error code to the integer pointer parameter.  This 
- * makes the function potentially thread safe although it hasn't been fully tested.
- * 
- * \param name is the file path/name to be opened
- * \param flags is a bitwise OR of flags from fcntl.h including read/write/create/append etc.
- * \param mode is the permissions setting for creating the file, largely ignored on FAT
- * \param rerrno if there is an error the error code will be written to the integer pointed to by
- * errno
- * \returns -1 on error or a file number for the opened file.
- **/
+// POSIX open, but with an `rerrno` parameter for getting errors
 int fat_open(const char *name, int flags, int mode, int *rerrno);
 
 int fat_close(int fd, int *rerrno);
@@ -210,5 +165,3 @@ int fat_get_next_dirent(int, struct dirent *, int *rerrno);
 int fat_unlink(const char *path, int *rerrno);
 int fat_rmdir(const char *path, int *rerrno);
 int fat_mkdir(const char *path, int mode, int *rerrno);
-
-#endif /* ifndef GRISTLE_H */

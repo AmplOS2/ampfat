@@ -1,5 +1,6 @@
-#ifndef EMBEXT2_H
-#define EMBEXT2_H 1
+#pragma once
+#include "block.hh"
+#include <stdint.h>
 
 #define MAX_PATH_LEN 1024
 #define MAX_PATH_LEVELS 100
@@ -158,5 +159,3 @@ int ext2_fstat(struct file_ent *fe, struct stat *st, int *rerrno);
 int ext2_lseek(struct file_ent *fe, int ptr, int dir, int *rerrno);
 
 struct dirent *ext2_readdir(struct file_ent *fe, int *rerrno);
-
-#endif /* ifndef EMBEXT2_H */

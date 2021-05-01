@@ -1,15 +1,4 @@
-/* libc/sys/linux/sys/dirent.h - Directory entry as returned by readdir */
-
-/* Written 2000 by Werner Almesberger */
-
-
-#ifndef _SYS_DIRENT_H
-#define _SYS_DIRENT_H
-
-#include <sys/types.h>
-
-#define HAVE_NO_D_NAMLEN	/* no struct dirent->d_namlen */
-#define HAVE_DD_LOCK  		/* have locking mechanism */
+#pragma once
 
 #define MAXNAMLEN 255		/* sizeof(struct dirent.d_name)-1 */
 

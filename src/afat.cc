@@ -1,47 +1,12 @@
-/*
- * Copyright (c) 2012-2013, Nathan Dumont
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of 
- *    conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list of 
- *    conditions and the following disclaimer in the documentation and/or other materials 
- *    provided with the distribution.
- * 3. Neither the name of the author nor the names of any contributors may be used to endorse or
- *    promote products derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- * This file is part of the Gristle FAT16/32 compatible filesystem driver.
- */
-
-#include <fcntl.h>
-#include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
-#include "dirent.h"
-#include <errno.h>
-#include "block.h"
-#include "partition.h"
-#include "config.h"
-#include "gristle.h"
-
-#ifndef GRISTLE_TIME
-#define GRISTLE_TIME time(NULL)
-#endif
+#include <afat/dirent.hh>
+#include <afat/block.hh>
+#include <afat/partition.hh>
+#include <afat/config.hh>
+#include <afat/afat.hh>
 
 #ifndef GRISTLE_SYSLOCK
 #define GRISTLE_SYSLOCK 1
@@ -51,22 +16,9 @@
 #define GRISTLE_SYSUNLOCK
 #endif
 
-/**
- * global variable structures.
- * These take the place of a real operating system.
- **/
-
-struct fat_info fatfs;
-FileS file_num[MAX_OPEN_FILES];
-// uint32_t available_files;
-
 // there's a circular dependency between the two flush functions in certain cases,
 // so we need to prototype one here
 int fat_flush_fileinfo(int fd);
-
-/**
- * Name/Time formatting, doesn't read/write disc
- **/
 
 /* fat_to_unix_time - convert a time field from FAT format to unix epoch 
    seconds. */
@@ -131,10 +83,7 @@ uint16_t fat_from_unix_date(time_t seconds) {
  * time it was accessed, a test is made, if this is the case, the fs_dirty flag is not set
  * so no flush is required on the meta info for this file.
  */
-int fat_update_atime(int fd) {
-#ifdef GRISTLE_RO
-    (void)fd;
-#else
+void fat_update_atime(int fd) {
   uint16_t new_date, old_date;
   new_date = fat_from_unix_date(GRISTLE_TIME);
   old_date = fat_from_unix_date(file_num[fd].accessed);
@@ -143,8 +92,6 @@ int fat_update_atime(int fd) {
     file_num[fd].accessed = GRISTLE_TIME;
     file_num[fd].flags |= FAT_FLAG_FS_DIRTY;
   }
-#endif
-  return 0;
 }
 
 /*
@@ -153,14 +100,9 @@ int fat_update_atime(int fd) {
  * Since this is tracked to the nearest 2 seconds it is assumed there will always be an update
  * so to reduce overheads, the date is just set and the fs_dirty flag set.
  */
-int fat_update_mtime(int fd) {
-#ifdef GRISTLE_RO
-    (void)fd;
-#else
+void fat_update_mtime(int fd) {
   file_num[fd].modified = GRISTLE_TIME;
   file_num[fd].flags |= FAT_FLAG_FS_DIRTY;
-#endif
-  return 0;
 }
 
 /* fat_get_next_file - returns the next free file descriptor or -1 if none */
@@ -183,7 +125,7 @@ int8_t fat_get_next_file() {
             / indicates a path separator (either / or \  is accepted)
             . indicates a literal .
             all other valid characters returned, lower case are capitalised. */
-char doschar(char c) {
+char doschar(unsigned char c) {
   if(c == 0) {
     return 0;
   } else if((c == '/') || (c =='\\')) {
@@ -196,9 +138,9 @@ char doschar(char c) {
     return c;
   } else if((c >= 'a') && (c <= 'z')) {
     return (c - 'a') + 'A';
-  } else if((unsigned char)c == 0xE5) {
+  } else if(c == 0xE5) {
     return 0x05;
-  } else if((unsigned char)c > 127) {
+  } else if(c > 127) {
     return c;
   } else if((c == '!') || (c == '#') || (c == '$') || (c == '%') ||
             (c == '&') || (c == '\'') || (c == '(') || (c == ')') ||
@@ -214,8 +156,6 @@ char doschar(char c) {
 int make_dos_name(char *dosname, const char *path, int *path_pointer) {
   int i;
   char c, ext_follows;
-
-//   iprintf("path input = %s\n", path);
 
   dosname[11] = 0;
   c = doschar(*(path + (*path_pointer)++));
@@ -235,14 +175,12 @@ int make_dos_name(char *dosname, const char *path, int *path_pointer) {
         *(dosname + i) = ' ';
       }
     } else if(c == 1) {
-//       iprintf("Exit 1\n");
       return -1;
     } else {
       *(dosname + i) = c;
       c = doschar(*(path + (*path_pointer)++));
     }
   }
-//   iprintf("main exit char = %c (%x)\n", c, c);
   if(c == '.') {
     ext_follows = 1;
     c = doschar(*(path + (*path_pointer)++));
@@ -256,7 +194,6 @@ int make_dos_name(char *dosname, const char *path, int *path_pointer) {
     } else if((c == '/') || (c == 0)) {
       ext_follows = 0;
     } else {
-//       iprintf("Exit 2\n");
       return -1;      /* either an illegal character or a filename too long */
     }
   }
@@ -477,13 +414,7 @@ int fat_free_clusters(uint32_t cluster) {
 
 /* write a sector back to disc */
 int fat_flush(int fd) {
-#ifdef GRISTLE_RO
-    (void)fd;
-#else
   uint32_t cluster;
-#ifdef TRACE
-  printf("fat_flush\n");
-#endif
   /* only write to disk if we need to */
   if(file_num[fd].flags & FAT_FLAG_DIRTY) {
     if(file_num[fd].sector == 0) {
@@ -520,7 +451,6 @@ int fat_flush(int fd) {
       file_num[fd].flags &= ~FAT_FLAG_DIRTY;
     }
   }
-#endif
   return 0;
 }
 
@@ -549,12 +479,9 @@ int fat_select_cluster(int fd, uint32_t cluster) {
 
 /* get the next cluster in the current file */
 int fat_next_cluster(int fd, int *rerrno) {
-  uint32_t i;
-  uint32_t j;
-  uint32_t k;
-#ifdef TRACE
-  printf("fat_next_cluster\n");
-#endif
+  uint32_t i
+  , j
+  , k;
   (*rerrno) = 0;
   if(fat_flush(fd)) {
     (*rerrno) = EIO;
@@ -664,9 +591,6 @@ int fat_next_sector(int fd) {
 
 /* Function to save file meta-info, (size modified date etc.) */
 int fat_flush_fileinfo(int fd) {
-#ifdef GRISTLE_RO
-    (void)fd;
-#else
   direntS de;
   direntS *de2;
   int i;
@@ -675,10 +599,7 @@ int fat_flush_fileinfo(int fd) {
   uint32_t temp_cluster;
   uint32_t temp_sector;
   uint32_t temp_cursor;
-#ifdef TRACE
-  printf("fat_flush_fileinfo(%d)\n", fd);
-#endif
-  
+
   if(file_num[fd].full_first_cluster == fatfs.root_cluster) {
     // do nothing to try and update meta info on the root directory
     return 0;
@@ -765,7 +686,6 @@ int fat_flush_fileinfo(int fd) {
   if(block_read(file_num[fd].sector, file_num[fd].buffer)) {
     return -1;
   }
-#endif
   /* mark the filesystem as consistent now */
   file_num[fd].flags &= ~FAT_FLAG_FS_DIRTY;
   return 0;
@@ -996,36 +916,24 @@ int fat_mount_fat16(blockno_t start, blockno_t volume_size) {
     // number of reserved sectors must be at least 1, can't be
     // the size of the partition.
     if((boot16->reserved_sectors < 1) || (boot16->reserved_sectors >= volume_size)) {
-#ifdef FAT_DEBUG
-      printf("Reserved sector count was not valid: %d\r\n", boot16->reserved_sectors);
-#endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of fats, normally two but must be between 1 and 15
     if((boot16->num_fats < 1) || (boot16->num_fats >= 15)) {
-#ifdef FAT_DEBUG
-      printf("Invalid number of FATs: %d\r\n", boot16->num_fats);
-#endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of root directory entries
     if((boot16->root_entries == 0)) {
-#ifdef FAT_DEBUG
-      printf("No root directory entries, looks like a FAT32 partition.\r\n");
-#endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of root directory entries must be an integer multiple of the sector size
     if((boot16->root_entries) & ((boot16->sector_size / 32) - 1)) {
-#ifdef FAT_DEBUG
-      printf("Root directory will not be an integer number of sectors.\r\n");
-#endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
@@ -1033,17 +941,11 @@ int fat_mount_fat16(blockno_t start, blockno_t volume_size) {
     // total logical sectors (if less than 65535)
     if(boot16->total_sectors == 0) {
       if(boot16->big_total_sectors > volume_size) {
-#ifdef FAT_DEBUG
-        printf("Total sectors is larger than the volume.\r\n");
-#endif
         GRISTLE_SYSUNLOCK;
         return -1;
       }
     } else {
       if(boot16->total_sectors > volume_size) {
-#ifdef FAT_DEBUG
-        printf("Total sectors is larger than the volume.\r\n");
-#endif
         GRISTLE_SYSUNLOCK;
         return -1;
       }
@@ -1063,9 +965,6 @@ int fat_mount_fat16(blockno_t start, blockno_t volume_size) {
     
     // check the calculated values are within the volume 
     if(fatfs.root_start > (start + volume_size)) {
-#ifdef FAT_DEBUG
-      printf("Root start is beyond the end of the volume.\r\n");
-#endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
@@ -1107,13 +1006,10 @@ int fat_mount_fat32(blockno_t start, blockno_t volume_size) {
     // we can only handle sector size equal to the disk block size
     // for now at least.
     if(!(boot32->sector_size == 512)) {
-  #ifdef FAT_DEBUG
-      printf("Sector size not 512 bytes.\r\n");
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
-    
+
     // cluster size is a number of sectors per cluster.  Must be a
     // power of two in 8 bits (i.e. 1, 2, 4, 8, 16, 32, 64 or 128)
     for(i=0;i<8;i++) {
@@ -1122,9 +1018,6 @@ int fat_mount_fat32(blockno_t start, blockno_t volume_size) {
       }
     }
     if(i == 8) {
-  #ifdef FAT_DEBUG
-      printf("Cluster size not power of two.\r\n");
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
@@ -1132,36 +1025,24 @@ int fat_mount_fat32(blockno_t start, blockno_t volume_size) {
     // number of reserved sectors must be at least 1, can't be
     // the size of the partition.
     if((boot32->reserved_sectors < 1) || (boot32->reserved_sectors >= volume_size)) {
-  #ifdef FAT_DEBUG
-      printf("Reserved sector count was not valid: %d\r\n", boot32->reserved_sectors);
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of fats, normally two but must be between 1 and 15
     if((boot32->num_fats < 1) || (boot32->num_fats >= 15)) {
-  #ifdef FAT_DEBUG
-      printf("Invalid number of FATs: %d\r\n", boot32->num_fats);
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of root directory entries
     if((boot32->root_entries != 0)) {
-  #ifdef FAT_DEBUG
-      printf("Root directory entries, looks like a FAT16 partition.\r\n");
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
     
     // number of root directory entries must be an integer multiple of the sector size
     if((boot32->root_entries) & ((boot32->sector_size / 32) - 1)) {
-  #ifdef FAT_DEBUG
-      printf("Root directory will not be an integer number of sectors.\r\n");
-  #endif
       GRISTLE_SYSUNLOCK;
       return -1;
     }
@@ -1169,17 +1050,11 @@ int fat_mount_fat32(blockno_t start, blockno_t volume_size) {
     // total logical sectors (if less than 65535)
     if(boot32->total_sectors == 0) {
       if(boot32->big_total_sectors > volume_size) {
-  #ifdef FAT_DEBUG
-        printf("Total sectors is larger than the volume.\r\n");
-  #endif
         GRISTLE_SYSUNLOCK;
         return -1;
       }
     } else {
       if(boot32->total_sectors > volume_size) {
-  #ifdef FAT_DEBUG
-        printf("Total sectors is larger than the volume.\r\n");
-  #endif
         GRISTLE_SYSUNLOCK;
         return -1;
       }
@@ -1219,45 +1094,28 @@ int fat_mount_fat32(blockno_t start, blockno_t volume_size) {
  * callable file access routines
  */
 
-/**
- * \brief Attempts to mount a partition starting at the addressed block.
- * 
- **/
+/// Attempts to mount a partition starting at the addressed block.
 int fat_mount(blockno_t part_start, blockno_t volume_size, uint8_t filesystem_hint) {
   if(filesystem_hint == PART_TYPE_FAT16) {
-    // try FAT16 first
-    if(fat_mount_fat16(part_start, volume_size) == 0) {
-      return 0;
-    } else {
-      // try FAT32 as a fallback
-      if(fat_mount_fat32(part_start, volume_size) == 0) {
-        return 0;
-      }
-    }
+    if(fat_mount_fat16(part_start, volume_size) == 0) return 0;
+    if(fat_mount_fat32(part_start, volume_size) == 0) return 0;
   } else {
-    if(fat_mount_fat32(part_start, volume_size) == 0) {
-      return 0;
-    } else {
-      if(fat_mount_fat16(part_start, volume_size) == 0) {
-        return 0;
-      }
-    }
+    if(fat_mount_fat32(part_start, volume_size) == 0) return 0;
+    if(fat_mount_fat16(part_start, volume_size) == 0) return 0;
   }
-  return -1;            // no FAT type working
+  return -1;
 }
 
-int fat_open(const char *name, int flags, int mode, int *rerrno) {
+int fat_open(const char *name, int flags, int mode, int &rerrno) {
   int i;
   int8_t fd;
   
-//   printf("fat_open(%s, %x)\n", name, flags);
   fd = fat_get_next_file();
   if(fd < 0) {
-    (*rerrno) = ENFILE;
+    rerrno = ENFILE;
     return -1;   /* too many open files */
   }
 
-//   printf("Lookup path\n");
   i = fat_lookup_path(fd, name, rerrno);
   if((flags & O_RDWR)) {
     file_num[fd].flags |= (FAT_FLAG_READ | FAT_FLAG_WRITE);
@@ -1409,7 +1267,7 @@ int fat_close(int fd, int *rerrno) {
   return 0;
 }
 
-int fat_read(int fd, void *buffer, size_t count, int *rerrno) {
+int fat_read(int fd, void *buffer, size_t count, int &rerrno) {
   uint32_t i=0;
   uint8_t *bt = (uint8_t *)buffer;
   /* make sure this is an open file and it can be read */
@@ -1446,7 +1304,7 @@ int fat_read(int fd, void *buffer, size_t count, int *rerrno) {
   return i;
 }
 
-int fat_write(int fd, const void *buffer, size_t count, int *rerrno) {
+int fat_write(int fd, const void *buffer, size_t count, int &rerrno) {
   uint32_t i=0;
   uint8_t *bt = (uint8_t *)buffer;
   (*rerrno) = 0;
@@ -1485,7 +1343,7 @@ int fat_write(int fd, const void *buffer, size_t count, int *rerrno) {
   return i;
 }
 
-int fat_fstat(int fd, struct stat *st, int *rerrno) {
+int fat_fstat(int fd, struct stat *st, int &rerrno) {
   (*rerrno) = 0;
   if(fd >= MAX_OPEN_FILES) {
     (*rerrno) = EBADF;
@@ -1516,7 +1374,7 @@ int fat_fstat(int fd, struct stat *st, int *rerrno) {
   return 0; 
 }
 
-int fat_lseek(int fd, int ptr, int dir, int *rerrno) {
+int fat_lseek(int fd, int ptr, int dir, int &rerrno) {
   unsigned int new_pos;
   unsigned int old_pos;
   int new_sec;
@@ -1572,9 +1430,7 @@ int fat_lseek(int fd, int ptr, int dir, int *rerrno) {
     file_num[fd].sector = file_num[fd].sector + (new_pos/512) - (old_pos/512);
     file_num[fd].sectors_left = file_num[fd].sectors_left - (new_pos/512) + (old_pos/512);
     file_num[fd].cursor = new_pos & 0x1ff;
-//     printf("%d sector: %d, cursor %d, file_sector: %d, first_sector: %d, sec/clus: %d\n", fd, file_num[fd].sector, file_num[fd].cursor, file_num[fd].file_sector, file_num[fd].full_first_cluster * fatfs.sectors_per_cluster + fatfs.cluster0, fatfs.sectors_per_cluster);
     if(block_read(file_num[fd].sector, file_num[fd].buffer)) {
-//       iprintf("Bad block read.\r\n");
       return ptr - 1;
     }
     return new_pos;
@@ -1597,23 +1453,20 @@ int fat_lseek(int fd, int ptr, int dir, int *rerrno) {
   file_num[fd].sectors_left = fatfs.sectors_per_cluster - new_sec - 1;
   if(block_read(file_num[fd].sector, file_num[fd].buffer)) {
     return ptr-1;
-//     iprintf("Bad block read 2.\r\n");
   }
   return new_pos;
 }
 
-int fat_get_next_dirent(int fd, struct dirent *out_de, int *rerrno) {
+int fat_get_next_dirent(int fd, struct dirent *out_de, int &rerrno) {
   direntS de;
   
   while(1) {
     if(fat_read(fd, &de, sizeof(direntS), rerrno) < (int)sizeof(direntS)) {
       // either an error or end of the directory
-//       printf("end of directory, read less than %d bytes.\n", sizeof(direntS));
       return -1;
     }
     if(de.filename[0] == 0) {
       // end of the directory
-//       printf("End of directory, first byte = 0\n");
       *rerrno = 0;
       return -1;
     }
@@ -1634,33 +1487,14 @@ int fat_get_next_dirent(int fd, struct dirent *out_de, int *rerrno) {
 /*************************************************************************************************/
 /* High level file system calls based on unistd.h                                                */
 /*************************************************************************************************/
-#ifdef GRISTLE_RO
-// if a read only filesystem build has been defined avoid including any system calls here
-int fat_unlink(const char *path __attribute__((__unused__)), int *rerrno) {
-    *rerrno = EROFS;
-    return -1;
-}
-
-int fat_rmdir(const char *path __attribute__((__unused__)), int *rerrno) {
-    *rerrno = EROFS;
-    return -1;
-}
-
-int fat_mkdir(const char *path __attribute__((__unused__)), int mode __attribute__((__unused__)),
-              int *rerrno) {
-    *rerrno = EROFS;
-    return -1;
-}
-
-#else
 
 /**
- * \brief internal only function called by rmdir and unlink to actually delete entries
+ * internal only function called by rmdir and unlink to actually delete entries
  * 
  * Can be used to remove any entry, does no checking for empty directories etc.
  * Should be called on files by unlink() and on empty directories by rmdir()
  **/
-int fat_delete(int fd, int *rerrno __attribute__((__unused__))) {
+void fat_delete(int fd) {
     // remove the directory entry
     // in fat this just means setting the first character of the filename to 0xe5
     block_read(file_num[fd].entry_sector, file_num[fd].buffer);
@@ -1673,19 +1507,13 @@ int fat_delete(int fd, int *rerrno __attribute__((__unused__))) {
     return 0;
 }
 
-int fat_unlink(const char *path, int *rerrno) {
-  int fd;
-  struct stat st;
-  // check the file isn't open
-  
-  // find the file
-  fd = fat_open(path, O_RDONLY, 0777, rerrno);
+int fat_unlink(const char *path, int &rerrno) {
+  int fd = fat_open(path, O_RDONLY, 0777, rerrno);
   if(fd < 0) {
     return -1;
   }
-//   printf("fd.entry_sector = %d\n", file_num[fd].entry_sector);
-//   printf("fd.entry_number = %d\n", file_num[fd].entry_number);
-  
+
+  struct stat st;
   if(fat_fstat(fd, &st, rerrno)) {
       return -1;
   }
@@ -1697,7 +1525,7 @@ int fat_unlink(const char *path, int *rerrno) {
       // EPERM as errno
       file_num[fd].flags = FAT_FLAG_OPEN;   // make sure atime isn't affected
       fat_close(fd, rerrno);
-      (*rerrno) = EPERM;
+      rerrno = EPERM;
       return -1;
   }
   
@@ -1707,7 +1535,7 @@ int fat_unlink(const char *path, int *rerrno) {
   return 0;
 }
 
-int fat_rmdir(const char *path, int *rerrno) {
+int fat_rmdir(const char *path, int &rerrno) {
   struct dirent de;
   int f_dir;
   int i;
@@ -1736,10 +1564,10 @@ int fat_rmdir(const char *path, int *rerrno) {
     return -1;
   }
   // no entries found, delete it
-  return 0;//fat_unlink(path, rerrno);
+  return 0;
 }
 
-int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrno) {
+int fat_mkdir(const char *path, int &rerrno) {
   direntS d;
   uint32_t cluster;
   uint32_t parent_cluster;
@@ -1792,16 +1620,13 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
     fat_free_clusters(cluster);
     return -1;
   }
-//   printf("mkdir, int_call = %d\r\n", int_call);
   parent_cluster = file_num[f_dir].full_first_cluster;
-//   printf("parent_cluster = %d\n", parent_cluster);
-  
+
   // seek to the end of the directory
   do {
     if(fat_read(f_dir, &d, sizeof(d), rerrno) < (int)sizeof(d)) {
       fat_close(f_dir, rerrno);
       fat_free_clusters(cluster);
-//       printf("read1 exit\r\n");
       return -1;
     }
   } while(d.filename[0] != 0);
@@ -1810,7 +1635,6 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
   if(fat_lseek(f_dir, -32, SEEK_CUR, rerrno) == -33) {
     fat_close(f_dir, rerrno);
     fat_free_clusters(cluster);
-//     printf("lseek exit\r\n");
     return -1;
   }
   
@@ -1818,7 +1642,6 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
     fat_free_clusters(cluster);
     fat_close(f_dir, rerrno);
     *rerrno = ENAMETOOLONG;
-//     printf("filename exit\r\n");
     return -1;
   }
   // write a new directory entry
@@ -1844,29 +1667,23 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
   d.first_cluster = cluster & 0xffff;
   d.size = 0;
   
-//   printf("write new folder\n");
   if(fat_write(f_dir, &d, sizeof(d), rerrno) == -1) {
-//     printf("write exit\r\n");
     return -1;
   }
   
   memset(&d, 0, sizeof(d));
   
-//   printf("here\n");
   if(fat_write(f_dir, &d, sizeof(d), rerrno) == -1) {
-//     printf("write 2 exit\r\n");
     return -1;
   }
   
   if(fat_close(f_dir, rerrno)) {
-//     printf("close exit\r\n");
     return -1;
   }
   
   // create . and .. entries in the new directory cluster and an end of directory entry
   if((f_dir = fat_open(path, O_RDWR, 0777, &int_call)) == -1) {
     *rerrno = int_call;
-//     printf("open exit\r\n");
     return -1;
   }
   
@@ -1890,7 +1707,6 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
   d.size = 0;           // directory entries have zero length according to the standard
   
   if((fat_write(f_dir, &d, sizeof(direntS), rerrno)) == -1) {
-//     printf("write 3 exit\r\n");
     return -1;
   }
   
@@ -1899,7 +1715,6 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
   d.first_cluster = parent_cluster & 0xffff;
   
   if((fat_write(f_dir, &d, sizeof(direntS), rerrno)) == -1) {
-//     printf("write 4 exit\r\n");
     return -1;
   }
   
@@ -1907,15 +1722,12 @@ int fat_mkdir(const char *path, int mode __attribute__((__unused__)), int *rerrn
   
   for(i=0;i<(int)((block_get_block_size() * fatfs.sectors_per_cluster) / sizeof(direntS)) - 2;i++) {
     if((fat_write(f_dir, &d, sizeof(direntS), rerrno)) == -1) {
-//       printf("write 5 exit\r\n");
       return -1;
     }
   }
   if(fat_close(f_dir, rerrno)) {
-//     printf("close 2 exit\r\n");
     return -1;
   }
   
   return 0;
 }
-#endif /* ifdef GRISTLE_RO */
