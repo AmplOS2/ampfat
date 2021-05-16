@@ -85,11 +85,11 @@ uint16_t fat_from_unix_date(time_t seconds) {
  */
 void fat_update_atime(int fd) {
   uint16_t new_date, old_date;
-  new_date = fat_from_unix_date(GRISTLE_TIME);
+  new_date = fat_from_unix_date(time(NULL));
   old_date = fat_from_unix_date(file_num[fd].accessed);
   
   if(old_date != new_date) {
-    file_num[fd].accessed = GRISTLE_TIME;
+    file_num[fd].accessed = time(NULL);
     file_num[fd].flags |= FAT_FLAG_FS_DIRTY;
   }
 }
@@ -101,7 +101,7 @@ void fat_update_atime(int fd) {
  * so to reduce overheads, the date is just set and the fs_dirty flag set.
  */
 void fat_update_mtime(int fd) {
-  file_num[fd].modified = GRISTLE_TIME;
+  file_num[fd].modified = time(NULL);
   file_num[fd].flags |= FAT_FLAG_FS_DIRTY;
 }
 
@@ -318,9 +318,6 @@ int str_to_fatname(char *url, char *dosname) {
 
 /* low level file-system operations */
 int fat_get_free_cluster() {
-#ifdef TRACE
-  printf("fat_get_free_cluster\n");
-#endif
   blockno_t i;
   int j;
   uint32_t e;
@@ -353,9 +350,6 @@ int fat_get_free_cluster() {
             GRISTLE_SYSUNLOCK;
             return 0xFFFFFFFF;
           }
-  #ifdef TRACE
-    printf("fat_get_free_cluster returning %d\n", ((i - fatfs.active_fat_start) * (512 / fatfs.fat_entry_len)) + j);
-  #endif
           GRISTLE_SYSUNLOCK;
           return ((i - fatfs.active_fat_start) * (512 / fatfs.fat_entry_len)) + j;
         }
@@ -456,9 +450,6 @@ int fat_flush(int fd) {
 
 /* get the first sector of a given cluster */
 int fat_select_cluster(int fd, uint32_t cluster) {
-#ifdef TRACE
-  printf("fat_select_cluster\n");
-#endif
 //   printf("%d: select cluster %d\n  sector=%d\n", fd, cluster, file_num[fd].sector);
   if(cluster == 1) {
     // this is an edge case for the fixed root directory on FAT16
@@ -562,9 +553,6 @@ int fat_next_cluster(int fd, int *rerrno) {
 int fat_next_sector(int fd) {
   int c;
   int rerrno;
-#ifdef TRACE
-  printf("fat_next_sector(%d)\n", fd);
-#endif
   /* if the current sector was written write to disc */
   if(fat_flush(fd)) {
     return -1;
@@ -729,11 +717,6 @@ int fat_lookup_path(int fd, const char *path, int *rerrno) {
     }
   }
   
-//   printf("\tSPLIT PATH:\n");
-//   for(i=0;i<levels;i++) {
-//     printf("\t%s\n", elements[i]);
-//   }
-//   printf("\t--------------\n");
   /* select root directory */
   fat_select_cluster(fd, fatfs.root_cluster);
 
@@ -757,30 +740,23 @@ int fat_lookup_path(int fd, const char *path, int *rerrno) {
   file_num[fd].parent_cluster = fatfs.root_cluster;
   while(1) {
     if(depth > levels) {
-//       printf("Serious filesystem error\r\n");
       *rerrno = EIO;
       return -1;
     }
 //     if((r = str_to_fatname(&path[path_pointer], dosname)) < 0) {
 //     if(make_dos_name(dosname, path, &path_pointer)) {
-//     printf("depth = %d, levels = %d\n", depth, levels);
     if(str_to_fatname(elements[depth], dosname2)) {
-//       printf("didn't make a dos name :(\n");
-//       printf("Path: %s\n", path);
       (*rerrno) = EIO; // can't be ENOENT or the driver may decide to create it if open for writing
       return -1;  /* invalid path name */
     }
     path_pointer = 0;
     if(make_dos_name(dosname, dosname2, &path_pointer)) {
-//       printf("step 2 dosname failure.\n");
       *rerrno = EIO;
       return -1;
     }
 //     path_pointer += r;
-//     printf("\"%s\" depth=%d, levels=%d\r\n", dosname, depth, levels);
     depth ++;
     while(1) {
-//       printf("looping [s:%d/%d c:%d]\r\n", file_num[fd].sectors_left, fatfs.sectors_per_cluster, file_num[fd].cluster);
       for(i=0;i<16;i++) {
         if(*(char *)(file_num[fd].buffer + (i * 32)) == 0) {
           memcpy(file_num[fd].filename, dosname, 8);
@@ -1161,7 +1137,7 @@ int fat_open(const char *name, int flags, int mode, int &rerrno) {
       file_num[fd].entry_sector = 0;
       file_num[fd].entry_number = 0;
       file_num[fd].file_sector = 0;
-      file_num[fd].created = GRISTLE_TIME;
+      file_num[fd].created = time(NULL);
       file_num[fd].modified = 0;
       file_num[fd].accessed = 0;
       
@@ -1227,8 +1203,8 @@ int fat_open(const char *name, int flags, int mode, int &rerrno) {
           file_num[fd].cluster = 0;
           file_num[fd].sectors_left = 0;
           file_num[fd].file_sector = 0;
-          file_num[fd].created = GRISTLE_TIME;
-          file_num[fd].modified = GRISTLE_TIME;
+          file_num[fd].created = time(NULL);
+          file_num[fd].modified = time(NULL);
           file_num[fd].flags |= FAT_FLAG_FS_DIRTY;
         }
         file_num[fd].file_sector = 0;
@@ -1657,13 +1633,13 @@ int fat_mkdir(const char *path, int &rerrno) {
   }
   d.attributes = FAT_ATT_SUBDIR | FAT_ATT_ARC;
   d.reserved = 0x00;
-  d.create_time_fine = (GRISTLE_TIME & 1) * 100;
-  d.create_time = fat_from_unix_time(GRISTLE_TIME);
-  d.create_date = fat_from_unix_date(GRISTLE_TIME);
-  d.access_date = fat_from_unix_date(GRISTLE_TIME);
+  d.create_time_fine = (time(NULL) & 1) * 100;
+  d.create_time = fat_from_unix_time(time(NULL));
+  d.create_date = fat_from_unix_date(time(NULL));
+  d.access_date = fat_from_unix_date(time(NULL));
   d.high_first_cluster = cluster >> 16;
-  d.modified_time = fat_from_unix_time(GRISTLE_TIME);
-  d.modified_date = fat_from_unix_date(GRISTLE_TIME);
+  d.modified_time = fat_from_unix_time(time(NULL));
+  d.modified_date = fat_from_unix_date(time(NULL));
   d.first_cluster = cluster & 0xffff;
   d.size = 0;
   
@@ -1696,13 +1672,13 @@ int fat_mkdir(const char *path, int &rerrno) {
   }
   d.attributes = FAT_ATT_SUBDIR | FAT_ATT_ARC;
   d.reserved = 0x00;
-  d.create_time_fine = (GRISTLE_TIME & 1) * 100;
-  d.create_time = fat_from_unix_time(GRISTLE_TIME);
-  d.create_date = fat_from_unix_date(GRISTLE_TIME);
-  d.access_date = fat_from_unix_date(GRISTLE_TIME);
+  d.create_time_fine = (time(NULL) & 1) * 100;
+  d.create_time = fat_from_unix_time(time(NULL));
+  d.create_date = fat_from_unix_date(time(NULL));
+  d.access_date = fat_from_unix_date(time(NULL));
   d.high_first_cluster = cluster >> 16;
-  d.modified_time = fat_from_unix_time(GRISTLE_TIME);
-  d.modified_date = fat_from_unix_date(GRISTLE_TIME);
+  d.modified_time = fat_from_unix_time(time(NULL));
+  d.modified_date = fat_from_unix_date(time(NULL));
   d.first_cluster = cluster & 0xffff;
   d.size = 0;           // directory entries have zero length according to the standard
   
