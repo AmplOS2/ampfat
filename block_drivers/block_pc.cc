@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2013, Nathan Dumont
+ * Copyright (c) 2021, Chris Häußler
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -30,9 +31,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include "hash.h"
-#include "../block.h"
-#include "block_pc.h"
+#include <hash.hh>
+#include <block.hh>
+#include <block_pc.hh>
 
 uint64_t block_fs_size=0;
 uint8_t *blocks = NULL;

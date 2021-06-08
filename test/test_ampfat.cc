@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2013, Nathan Dumont
+ * Copyright (c) 2021, Chris Häußler
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,10 +32,10 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
-#include "../src/gristle.h"
-#include "../src/block.h"
-#include "../src/block_drivers/block_pc.h"
-#include "../src/partition.h"
+#include <ampfat.hh>
+#include <block.hh>
+#include <block_drivers/block_pc.hh>
+#include <partition.hh>
 
 /**************************************************************
  * Filesystem image structure:

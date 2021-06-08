@@ -28,8 +28,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include "block.h"
-#include "partition.h"
+#include "partition.hh"
 
 int read_partition_table(uint8_t *mbr, blockno_t volume_size, struct partition **retlist) {
   static struct partition retval[4];

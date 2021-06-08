@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2013, Nathan Dumont
+ * Copyright (c) 2021, Chris Häußler
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,7 +32,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
-#include "hash.h"
+#include <hash.hh>
 
 // 32 bit arbitrary offset rotate rather than shift
 #define leftrotate(x, c) ((x << c) | (x >> (32-c)))

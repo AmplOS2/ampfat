@@ -1,16 +1,17 @@
-CFLAGS	+= -Wall -Wextra -g -Os -I./ -I../src -I../src/block_drivers/
+CXX ?= c++
+CXXFLAGS += -Wall -Wextra -g -Os -I. -I../src -I../block_drivers
 
-all:	test_gristle test_embext show_info
+all: test_ampfat test_embext show_info
 
-test_gristle:	test_gristle.c hash.c hash.h ../src/block.h ../src/block_drivers/block_pc.c ../src/block_drivers/block_pc.h \
-		../src/gristle.c ../src/gristle.h ../src/partition.c ../src/partition.h Makefile
-	gcc $(CFLAGS) test_gristle.c hash.c ../src/block_drivers/block_pc.c ../src/gristle.c ../src/partition.c -o test_gristle
+test_ampfat: test_ampfat.cc hash.cc hash.hh ../block_drivers/block_pc.cc ../block_drivers/block_pc.hh \
+             ../src/ampfat.cc ../src/ampfat.hh ../src/partition.cc ../src/partition.hh Makefile
+	$(CXX) $(CXXFLAGS) test_ampfat.cc hash.cc ../block_drivers/block_pc.cc ../src/ampfat.cc ../src/partition.cc -o test_ampfat
 
-test_embext: 	test_embext.c ../src/embext.c ../src/block_drivers/block_pc.c hash.c ../src/embext.h \
-		../src/block_drivers/block_pc.h hash.h Makefile
-	gcc $(CFLAGS) -DEXT_DEBUG test_embext.c ../src/embext.c ../src/block_drivers/block_pc.c hash.c -o test_embext
+test_embext: test_embext.cc ../src/embext.cc ../block_drivers/block_pc.cc hash.cc ../src/embext.hh \
+             ../block_drivers/block_pc.hh hash.hh Makefile
+	$(CXX) $(CXXFLAGS) -DEXT_DEBUG test_embext.cc ../src/embext.cc ../block_drivers/block_pc.cc hash.cc -o test_embext
 
-show_info:	show_info.c ../src/block.h ../src/block_drivers/block_pc.c ../src/block_drivers/block_pc.h ../src/gristle.c \
-		../src/gristle.h ../src/partition.c ../src/partition.h Makefile
-	gcc $(CFLAGS) show_info.c hash.c ../src/block_drivers/block_pc.c ../src/gristle.c ../src/partition.c -o show_info
+show_info: show_info.cc ../src/block.hh ../block_drivers/block_pc.cc ../block_drivers/block_pc.hh ../src/ampfat.cc \
+           ../src/ampfat.hh ../src/partition.cc ../src/partition.hh Makefile
+	$(CXX) $(CXXFLAGS) show_info.cc hash.cc ../block_drivers/block_pc.cc ../src/ampfat.cc ../src/partition.cc -o show_info
 

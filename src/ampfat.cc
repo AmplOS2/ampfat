@@ -2,11 +2,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
-#include <afat/dirent.hh>
-#include <afat/block.hh>
-#include <afat/partition.hh>
-#include <afat/config.hh>
-#include <afat/afat.hh>
+#include <dirent.hh>
+#include <block.hh>
+#include <partition.hh>
+#include <config.hh>
+#include <ampfat.hh>
 
 #ifndef GRISTLE_SYSLOCK
 #define GRISTLE_SYSLOCK 1
